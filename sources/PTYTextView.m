@@ -1769,11 +1769,12 @@ NSNotificationName PTYTextViewWillChangeFontNotification = @"PTYTextViewWillChan
 
     const BOOL secureByUser = [[iTermSecureKeyboardEntryController sharedInstance] enabledByUserDefault];
     const BOOL secure = [[iTermSecureKeyboardEntryController sharedInstance] isEnabled];
+    const BOOL allowSecureKeyboardEntryIndicator = [iTermAdvancedSettingsModel showSecureKeyboardEntryIndicator];
     [_indicatorsHelper setIndicator:kiTermIndicatorSecureKeyboardEntry_User
-                            visible:secure && secureByUser
+                            visible:secure && secureByUser && allowSecureKeyboardEntryIndicator
                      darkBackground:isDark];
     [_indicatorsHelper setIndicator:kiTermIndicatorSecureKeyboardEntry_Forced
-                            visible:secure && !secureByUser
+                            visible:secure && !secureByUser && allowSecureKeyboardEntryIndicator
                      darkBackground:isDark];
 
     NSRect rect = self.visibleRect;
@@ -6028,6 +6029,25 @@ scrollToFirstResult:(BOOL)scrollToFirstResult
     const NSPoint temp =
     [self clickPoint:event allowRightMarginOverflow:allowRightMarginOverflow];
     return VT100GridCoordMake(temp.x, temp.y);
+}
+
+- (void)mouseHandler:(PTYMouseHandler *)sender handleCommandShiftClickAtCoord:(VT100GridCoord)coord {
+    id<VT100ScreenMarkReading> mark = [_delegate textViewMarkForCommandAt:coord];
+    if (!mark) {
+        return;
+    }
+    const VT100GridCoordRange range = [self coordRangeForMark:mark];
+    if (!VT100GridCoordRangeContainsCoord(range, coord)) {
+        return;
+    }
+
+    const long long overflow = [_dataSource totalScrollbackOverflow];
+    [_selection beginSelectionAtAbsCoord:VT100GridAbsCoordMake(0, range.start.y + overflow)
+                                   mode:kiTermSelectionModeLine
+                                 resume:NO
+                                 append:NO];
+    [_selection moveSelectionEndpointTo:VT100GridAbsCoordMake(self.dataSource.width, range.end.y + overflow - 1)];
+    [_selection endLiveSelection];
 }
 
 - (BOOL)mouseHandler:(PTYMouseHandler *)handler
