@@ -2482,9 +2482,10 @@ ITERM_WEAKLY_REFERENCEABLE
 }
 
 - (void)setWindowTitle:(NSString *)title subtitle:(NSString *)subtitle {
-    DLog(@"setWindowTitle:%@", title);
+    DLog(@"setWindowTitle:%@ for %@", title, self);
     if (_deallocing) {
         // This uses -weakSelf and can be called during dealloc. Doing so is a crash.
+        DLog(@"deallocing");
         return;
     }
     if (title == nil) {
@@ -2528,6 +2529,7 @@ ITERM_WEAKLY_REFERENCEABLE
         [title isEqualToString:self.window.title]) {
         // Title is already up to date.
         [_contentView setSubtitle:subtitle];
+        DLog(@"Title has not changed");
         return;
     }
 
@@ -2594,8 +2596,12 @@ ITERM_WEAKLY_REFERENCEABLE
     }
 }
 
-- (void)broadcastScrollToEnd {
-    for (PTYSession *aSession in [self broadcastSessions]) {
+- (void)broadcastScrollToEnd:(PTYSession *)sender {
+    NSArray<PTYSession *> *sessions = [self broadcastSessions];
+    if (sessions.count == 0 && sender != nil) {
+        sessions = @[ sender ];
+    }
+    for (PTYSession *aSession in sessions) {
         [aSession.textview scrollEnd];
         [(PTYScrollView *)[aSession.textview enclosingScrollView] detectUserScroll];
     }
