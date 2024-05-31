@@ -55,7 +55,6 @@
 #import "NSMutableAttributedString+iTerm.h"
 #import "NSObject+iTerm.h"
 #import "NSPasteboard+iTerm.h"
-#import "NSSavePanel+iTerm.h"
 #import "NSResponder+iTerm.h"
 #import "NSSavePanel+iTerm.h"
 #import "NSStringITerm.h"
@@ -88,6 +87,7 @@
 
 #import <CoreServices/CoreServices.h>
 #import <QuartzCore/QuartzCore.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <math.h>
 #include <sys/time.h>
 
@@ -541,16 +541,12 @@ NSNotificationName PTYTextViewWillChangeFontNotification = @"PTYTextViewWillChan
 - (BOOL)resignFirstResponder {
     DLog(@"resign first responder: reset numTouches to 0");
     _mouseHandler.numTouches = 0;
-    if (!self.it_shouldIgnoreFirstResponderChanges) {
-        [_mouseHandler didResignFirstResponder];
-        [self removeUnderline];
-        [self placeFindCursorOnAutoHide];
-        [_delegate textViewDidResignFirstResponder];
-        DLog(@"resignFirstResponder %@", self);
-        DLog(@"%@", [NSThread callStackSymbols]);
-    } else {
-        DLog(@"%@ ignoring first responder changes in resignFirstResponder", self);
-    }
+    [_mouseHandler didResignFirstResponder];
+    [self removeUnderline];
+    [self placeFindCursorOnAutoHide];
+    [_delegate textViewDidResignFirstResponder];
+    DLog(@"resignFirstResponder %@", self);
+    DLog(@"%@", [NSThread callStackSymbols]);
     dispatch_async(dispatch_get_main_queue(), ^{
         [[iTermSecureKeyboardEntryController sharedInstance] update];
     });
@@ -559,14 +555,10 @@ NSNotificationName PTYTextViewWillChangeFontNotification = @"PTYTextViewWillChan
 
 - (BOOL)becomeFirstResponder {
     DLog(@"%@", [NSThread callStackSymbols]);
-    if (!self.it_shouldIgnoreFirstResponderChanges) {
-        [_mouseHandler didBecomeFirstResponder];
-        [_delegate textViewDidBecomeFirstResponder];
-        DLog(@"becomeFirstResponder %@", self);
-        DLog(@"%@", [NSThread callStackSymbols]);
-    } else {
-        DLog(@"%@ ignoring first responder changes in becomeFirstResponder", self);
-    }
+    [_mouseHandler didBecomeFirstResponder];
+    [_delegate textViewDidBecomeFirstResponder];
+    DLog(@"becomeFirstResponder %@", self);
+    DLog(@"%@", [NSThread callStackSymbols]);
     [[iTermSecureKeyboardEntryController sharedInstance] update];
     return YES;
 }
@@ -1239,7 +1231,11 @@ NSNotificationName PTYTextViewWillChangeFontNotification = @"PTYTextViewWillChan
             }
             if ([self isInKeyWindow]) {
                 DLog(@"In key window so call textViewDidBecomeFirstResponder");
-                [_delegate textViewDidBecomeFirstResponder];
+                if (self.window.firstResponder != self) {
+                    [self.window makeFirstResponder:self];
+                } else {
+                    [_delegate textViewDidBecomeFirstResponder];
+                }
             } else {
                 DLog(@"Not in key window");
             }
@@ -5251,7 +5247,7 @@ scrollToFirstResult:(BOOL)scrollToFirstResult
         button.shouldFloat = shouldFloat;
         __weak __typeof(mark) weakMark = mark;
         button.action = ^(NSPoint locationInWindow) {
-            [weakSelf popShareMenuAt:locationInWindow absLine:markLine + offset for:weakMark];
+            [weakSelf popShareMenuAt:locationInWindow absLine:markLine + offset forMark:weakMark];
         };
         [updated addObject:button];
     }
@@ -5291,68 +5287,43 @@ scrollToFirstResult:(BOOL)scrollToFirstResult
     [menu showInView:self forEvent:NSApp.currentEvent];
 }
 
-- (void)popShareMenuAt:(NSPoint)locationInWindow absLine:(long long)absLine for:(id<VT100ScreenMarkReading>)mark {
+- (iTermRenegablePromise<NSAttributedString *> *)promisedAttributedStringForCommandAndOutputOfMark:(id<VT100ScreenMarkReading>)mark {
+    const VT100GridAbsCoordRange absRange = [self.delegate textViewCoordRangeForCommandAndOutputAtMark:mark];
+    iTermSelection *selection = [[[iTermSelection alloc] init] autorelease];
+    selection.delegate = self;
+    [selection beginSelectionAtAbsCoord:absRange.start
+                                   mode:kiTermSelectionModeLine
+                                 resume:NO
+                                 append:NO];
+    [selection moveSelectionEndpointTo:absRange.end];
+    [selection endLiveSelection];
+    iTermRenegablePromise<NSAttributedString *> *promise =
+        [self promisedAttributedStringForSelectedTextCappedAtSize:INT_MAX
+                                                minimumLineNumber:0
+                                                       timestamps:NO
+                                                        selection:selection];
+    return promise;
+}
+
+- (NSURL *)commandURLForMark:(id<VT100ScreenMarkReading>)mark 
+                     absLine:(long long)absLine {
+    return [iTermCommandURLBuilder urlWithMark:mark absLine:absLine dataSource:self.dataSource];
+}
+
+- (void)popShareMenuAt:(NSPoint)locationInWindow 
+               absLine:(long long)absLine
+               forMark:(id<VT100ScreenMarkReading>)mark {
     if (![[mark retain] autorelease]) {
         return;
     }
 
-    __weak __typeof(self) weakSelf = self;
-    iTermSimpleContextMenu *menu = [[[iTermSimpleContextMenu alloc] init] autorelease];
-    NSString *command = mark.command;
-    if (command.length) {
-        [menu addItemWithTitle:@"Add Command as Snippet" action:^{
-            iTermSnippet *snippet = [[iTermSnippet alloc] initWithTitle:command
-                                                                  value:command
-                                                                   guid:[[NSUUID UUID] UUIDString]
-                                                                   tags:@[]
-                                                               escaping:iTermSendTextEscapingNone
-                                                                version:[iTermSnippet currentVersion]];
-            [[iTermSnippetsModel sharedInstance] addSnippet:snippet];
-            [ToastWindowController showToastWithMessage:@"Snippet Added"
-                                               duration:1.5
-                                topLeftScreenCoordinate:[weakSelf.window convertPointToScreen:locationInWindow]
-                                              pointSize:12];
-        }];
-    }
-    const long long offset = self.dataSource.totalScrollbackOverflow;
-    NSString *directory = absLine >= offset ? [self.dataSource workingDirectoryOnLine:absLine - offset] : nil;
-    NSURLComponents *components = [[[NSURLComponents alloc] init] autorelease];
-    components.scheme = @"iterm2";
-    components.path = @"/command";
-    NSMutableArray *queryItems = [NSMutableArray array];
-    [queryItems addObject:[NSURLQueryItem queryItemWithName:@"c" value:mark.command]];
-    if (directory) {
-        [queryItems addObject:[NSURLQueryItem queryItemWithName:@"d" value:directory]];
-    }
-    components.queryItems = queryItems;
-    id<VT100RemoteHostReading> remoteHost = absLine >= offset ? [self.dataSource remoteHostOnLine:absLine - offset] : nil;
-    if (remoteHost && !remoteHost.isLocalhost) {
-        if (remoteHost.username) {
-            components.user = remoteHost.username;
-        }
-        if (remoteHost.hostname) {
-            components.host = remoteHost.hostname;
-        }
-    }
-    NSURL *url = [components URL];
-
-    if (url) {
-        [menu addItemWithTitle:@"Copy Command URL to Clipboard" action:^{
-            NSPasteboard *pasteBoard = [NSPasteboard generalPasteboard];
-            [pasteBoard clearContents];
-            [pasteBoard writeObjects:@[ url, url.absoluteString ]];
-        }];
-        [menu addItemWithTitle:@"Open Share Sheet…" action:^{
-            if (!weakSelf) {
-                return;
-            }
-            const NSRect viewRect = NSMakeRect(locationInWindow.x, locationInWindow.y, 0, 0);
-            NSSharingServicePicker *picker = [[[NSSharingServicePicker alloc] initWithItems:@[ url ]] autorelease];
-            [picker showRelativeToRect:viewRect ofView:weakSelf preferredEdge:NSRectEdgeMinY];
-        }];
-    }
-
-    [menu showInView:self forEvent:NSApp.currentEvent];
+    iTermCommandShareMenuProvider *provider =
+    [[[iTermCommandShareMenuProvider alloc] initWithMark:mark
+                                         promisedContent:[self promisedAttributedStringForCommandAndOutputOfMark:mark]
+                                  defaultBackgroundColor:[self defaultBackgroundColor]
+                                              commandURL:[self commandURLForMark:mark
+                                                                         absLine:absLine]] autorelease];
+    [provider popWithLocationInWindow:locationInWindow view:self];
 }
 
 - (void)toggleBookmarkForMark:(id<VT100ScreenMarkReading>)mark {
