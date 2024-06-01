@@ -93,7 +93,6 @@ extern NSNotificationName PTYTextViewWillChangeFontNotification;
 - (BOOL)textViewDrawBackgroundImageInView:(NSView *)view
                                  viewRect:(NSRect)rect
                    blendDefaultBackground:(BOOL)blendDefaultBackground
-                               deselected:(BOOL)deselected
                             virtualOffset:(CGFloat)virtualOffset;
 - (BOOL)textViewHasBackgroundImage;
 - (void)sendEscapeSequence:(NSString *)text;
@@ -735,6 +734,8 @@ scrollToFirstResult:(BOOL)scrollToFirstResult
 - (void)setNeedsDisplay:(BOOL)needsDisplay NS_UNAVAILABLE;
 - (void)setNeedsDisplayInRect:(NSRect)invalidRect NS_UNAVAILABLE;  // Use this instead of setNeedsDisplay:
 - (void)requestDelegateRedraw;  // Use this instead of setNeedsDisplay:
+
+- (iTermSelection *)selectionForCommandAndOutputOfMark:(id<VT100ScreenMarkReading>)mark;
 
 #pragma mark - Testing only
 

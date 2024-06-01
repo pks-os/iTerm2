@@ -491,7 +491,7 @@ NSNotificationName PTYTextViewWillChangeFontNotification = @"PTYTextViewWillChan
         [item action]==@selector(copyWithStyles:) ||
         [item action]==@selector(copyWithControlSequences:)) {
         // These commands are allowed only if there is a selection.
-        return [_selection hasSelection] || [self anyPortholeHasSelection];
+        return [_selection hasSelection] || [self anyPortholeHasSelection] || [self.delegate textViewSelectedCommandMark] != nil;
     }
     if (([item action]==@selector(performFindPanelAction:) && item.tag == NSFindPanelActionSetFindString) ||
         ([item action]==@selector(print:) && [item tag] == 1)) { // print selection
@@ -1562,6 +1562,7 @@ NSNotificationName PTYTextViewWillChangeFontNotification = @"PTYTextViewWillChan
     _drawingHelper.isCursorVisible = _cursorVisible && !autoComposerOpen;
     _drawingHelper.linesToSuppress = self.delegate.textViewLinesToSuppressDrawing;
     _drawingHelper.pointsOnBottomToSuppressDrawing = self.delegate.textViewPointsOnBottomToSuppressDrawing;
+    _drawingHelper.extraMargins = self.delegate.textViewExtraMargins;
     _drawingHelper.forceRegularBottomMargin = autoComposerOpen;
     // TODO: Don't leave find on page helper as the source of truth for this!
     _drawingHelper.selectedCommandRegion = [self relativeRangeFromAbsLineRange:self.findOnPageHelper.absLineRange];
@@ -1574,7 +1575,6 @@ NSNotificationName PTYTextViewWillChangeFontNotification = @"PTYTextViewWillChan
     const int topBottomMargin = [iTermPreferences intForKey:kPreferenceKeyTopBottomMargins];
     if ([_delegate textViewShouldShowOffscreenCommandLine] && self.enclosingScrollView.contentView.bounds.origin.y > topBottomMargin) {
         _drawingHelper.offscreenCommandLine = [self.dataSource offscreenCommandLineBefore:range.location];
-        [_drawingHelper.offscreenCommandLine setBackgroundColor:[_drawingHelper offscreenCommandLineBackgroundColor]];
     } else {
         _drawingHelper.offscreenCommandLine = nil;
     }
@@ -1618,8 +1618,7 @@ NSNotificationName PTYTextViewWillChangeFontNotification = @"PTYTextViewWillChan
 
 - (NSColor *)defaultBackgroundColor {
     CGFloat alpha = [self useTransparency] ? 1 - _transparency : 1;
-    return [[_colorMap processedBackgroundColorForBackgroundColor:[_colorMap colorForKey:kColorMapBackground]
-                                        inDeselectedCommandRegion:NO] colorWithAlphaComponent:alpha];
+    return [[_colorMap processedBackgroundColorForBackgroundColor:[_colorMap colorForKey:kColorMapBackground]] colorWithAlphaComponent:alpha];
 }
 
 - (NSColor *)defaultTextColor {
@@ -2885,6 +2884,10 @@ NSNotificationName PTYTextViewWillChangeFontNotification = @"PTYTextViewWillChan
         [self copyFromPortholeAsPlainText];
         return;
     }
+    if (!_selection.hasSelection && [self.delegate textViewSelectedCommandMark] != nil) {
+        [self copySelectedCommand];
+        return;
+    }
     [self copySelection:self.selection];
 }
 
@@ -2923,6 +2926,10 @@ NSNotificationName PTYTextViewWillChangeFontNotification = @"PTYTextViewWillChan
 - (IBAction)copyWithStyles:(id)sender {
     if ([self anyPortholeHasSelection]) {
         [self copyFromPortholeAsAttributedString];
+        return;
+    }
+    if (!_selection.hasSelection && [self.delegate textViewSelectedCommandMark] != nil) {
+        [self copySelectedCommandWithStyles];
         return;
     }
     [self copySelectionWithStyles:self.selection];
@@ -2972,14 +2979,30 @@ NSNotificationName PTYTextViewWillChangeFontNotification = @"PTYTextViewWillChan
         [self copyFromPortholeWithControlSequences];
         return;
     }
+    if (!_selection.hasSelection && [self.delegate textViewSelectedCommandMark] != nil) {
+        [self copySelectedCommandWithControlSequences];
+        return;
+    }
+    [self copySelectionWithControlSequences:_selection];
+}
+
+- (void)copySelectionWithControlSequences:(iTermSelection *)selection {
     DLog(@"-[PTYTextView copyWithControlSequences:] called");
     DLog(@"%@", [NSThread callStackSymbols]);
+
+    if ([self selectionIsBig:selection]) {
+        [self asynchronouslyVendSelectedTextWithStyle:iTermCopyTextStyleWithControlSequences
+                                         cappedAtSize:INT_MAX
+                                    minimumLineNumber:0
+                                            selection:selection];
+        return;
+    }
 
     NSString *copyString = [self selectedTextWithStyle:iTermCopyTextStyleWithControlSequences
                                           cappedAtSize:-1
                                      minimumLineNumber:0
                                             timestamps:NO
-                                             selection:self.selection];
+                                             selection:selection];
 
     if ([iTermAdvancedSettingsModel disallowCopyEmptyString] && copyString.length == 0) {
         DLog(@"Disallow copying empty string");
@@ -5005,12 +5028,10 @@ scrollToFirstResult:(BOOL)scrollToFirstResult
 
 - (void)drawingHelperDrawBackgroundImageInRect:(NSRect)rect
                         blendDefaultBackground:(BOOL)blend
-                                    deselected:(BOOL)deselected
                                  virtualOffset:(CGFloat)virtualOffset {
     [_delegate textViewDrawBackgroundImageInView:self
                                         viewRect:rect
                           blendDefaultBackground:blend
-                                      deselected:deselected
                                    virtualOffset:virtualOffset];
 }
 
@@ -5287,7 +5308,7 @@ scrollToFirstResult:(BOOL)scrollToFirstResult
     [menu showInView:self forEvent:NSApp.currentEvent];
 }
 
-- (iTermRenegablePromise<NSAttributedString *> *)promisedAttributedStringForCommandAndOutputOfMark:(id<VT100ScreenMarkReading>)mark {
+- (iTermSelection *)selectionForCommandAndOutputOfMark:(id<VT100ScreenMarkReading>)mark {
     const VT100GridAbsCoordRange absRange = [self.delegate textViewCoordRangeForCommandAndOutputAtMark:mark];
     iTermSelection *selection = [[[iTermSelection alloc] init] autorelease];
     selection.delegate = self;
@@ -5297,11 +5318,15 @@ scrollToFirstResult:(BOOL)scrollToFirstResult
                                  append:NO];
     [selection moveSelectionEndpointTo:absRange.end];
     [selection endLiveSelection];
+    return selection;
+}
+
+- (iTermRenegablePromise<NSAttributedString *> *)promisedAttributedStringForCommandAndOutputOfMark:(id<VT100ScreenMarkReading>)mark {
     iTermRenegablePromise<NSAttributedString *> *promise =
         [self promisedAttributedStringForSelectedTextCappedAtSize:INT_MAX
                                                 minimumLineNumber:0
                                                        timestamps:NO
-                                                        selection:selection];
+                                                        selection:[self selectionForCommandAndOutputOfMark:mark]];
     return promise;
 }
 

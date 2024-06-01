@@ -55,7 +55,6 @@ static vector_float4 VectorForColor(NSColor *color) {
     _showBroadcastStripes = drawingHelper.showStripes;
     NSColorSpace *colorSpace = textView.window.screen.colorSpace ?: [NSColorSpace it_defaultColorSpace];
     _processedDefaultBackgroundColor = [[drawingHelper defaultBackgroundColor] colorUsingColorSpace:colorSpace];
-    _processedDeselectedDefaultBackgroundColor = [[drawingHelper deselectedDefaultBackgroundColor] colorUsingColorSpace:colorSpace];
     _forceRegularBottomMargin = drawingHelper.forceRegularBottomMargin;
     _processedDefaultTextColor = [[drawingHelper defaultTextColor] colorUsingColorSpace:colorSpace];
     NSColor *selectionColor = [[_colorMap colorForKey:kColorMapSelection] colorUsingColorSpace:colorSpace];
@@ -66,7 +65,9 @@ static vector_float4 VectorForColor(NSColor *color) {
     NSArray<NSColor *> *scoc = drawingHelper.selectedCommandOutlineColors;
     _selectedCommandOutlineColors[0] = scoc[0].vector;
     _selectedCommandOutlineColors[1] = scoc[1].vector;
-
+    _shadeColor = drawingHelper.shadeColor.vector;
+    _shadeColor.xyz *= _shadeColor.w;
+    
     _lineStyleMarkColors = (iTermLineStyleMarkColors) {
         .success = [[[drawingHelper defaultBackgroundColor] blendedWithColor:[iTermTextDrawingHelper successMarkColor] weight:0.5] colorUsingColorSpace:colorSpace].vector,
         .other = [[[drawingHelper defaultBackgroundColor] blendedWithColor:[iTermTextDrawingHelper otherMarkColor] weight:0.5] colorUsingColorSpace:colorSpace].vector,
@@ -139,7 +140,6 @@ static vector_float4 VectorForColor(NSColor *color) {
     if (drawingHelper.offscreenCommandLine) {
         _offscreenCommandLineBackgroundColor = [textView.drawingHelper.offscreenCommandLineBackgroundColor colorUsingColorSpace:_colorSpace];
         _offscreenCommandLineOutlineColor = [textView.drawingHelper.offscreenCommandLineOutlineColor colorUsingColorSpace:_colorSpace];
-        _offscreenCommandLineBackgroundColor = [textView.drawingHelper.offscreenCommandLineBackgroundColor colorUsingColorSpace:_colorSpace];
     }
 
     _selectedCommandRegion = drawingHelper.selectedCommandRegion;

@@ -34,7 +34,6 @@ NS_ASSUME_NONNULL_BEGIN
     iTermColorMap *_colorMap;
     vector_float4 _fullScreenFlashColor;
     NSColor *_processedDefaultBackgroundColor;  // dimmed, etc.
-    NSColor *_processedDeselectedDefaultBackgroundColor;
     NSColor *_processedDefaultTextColor;
     vector_float4 _selectionColor;
     iTermLineStyleMarkColors _lineStyleMarkColors;
@@ -101,6 +100,7 @@ NS_ASSUME_NONNULL_BEGIN
     NSRange _selectedCommandRegion;
 
     vector_float4 _selectedCommandOutlineColors[2];
+    vector_float4 _shadeColor;
 };
 
 - (void)loadSettingsWithDrawingHelper:(iTermTextDrawingHelper *)drawingHelper

@@ -662,8 +662,7 @@ iTermCommandInfoViewControllerDelegate>
     }
     if (processed) {
         fgColor = [self.colorMap processedTextColorForTextColor:fgColor overBackgroundColor:bgColor disableMinimumContrast:NO];
-        bgColor = [self.colorMap processedBackgroundColorForBackgroundColor:bgColor
-                                                  inDeselectedCommandRegion:NO];
+        bgColor = [self.colorMap processedBackgroundColorForBackgroundColor:bgColor];
     }
     if (!c.invisible) {
         fgColor = [fgColor colorByPremultiplyingAlphaWithColor:bgColor];
@@ -825,10 +824,11 @@ iTermCommandInfoViewControllerDelegate>
                                                                   minimumLineNumber:(int)minimumLineNumber
                                                                          timestamps:(BOOL)timestamps
                                                                           selection:(iTermSelection *)selection {
+    // Don't trim whitespace here because it's so useful to get an exact copy.
     iTermSGRSelectionExtractor *extractor =
     [[iTermSGRSelectionExtractor alloc] initWithSelection:selection
                                                  snapshot:[self.dataSource snapshotDataSource]
-                                                  options:[self commonSelectionOptions]
+                                                  options:[self commonSelectionOptions] & ~iTermSelectionExtractorOptionsTrimWhitespace
                                                  maxBytes:maxBytes
                                         minimumLineNumber:minimumLineNumber];
     extractor.addTimestamps = timestamps;
@@ -1022,8 +1022,7 @@ iTermCommandInfoViewControllerDelegate>
 - (NSDictionary *)urlActionHelperAttributes:(iTermURLActionHelper *)helper {
     CGFloat alpha = [self useTransparency] ? 1 - self.transparency : 1;
     NSColor *unprocessedColor = [self.colorMap colorForKey:kColorMapSelection];
-    NSColor *processedColor = [self.colorMap processedBackgroundColorForBackgroundColor:unprocessedColor
-                                                              inDeselectedCommandRegion:NO];
+    NSColor *processedColor = [self.colorMap processedBackgroundColorForBackgroundColor:unprocessedColor];
     NSColor *backgroundColor = [processedColor colorWithAlphaComponent:alpha];
 
     NSColor *textColor = [self.colorMap processedTextColorForTextColor:[self.colorMap colorForKey:kColorMapSelectedText]
