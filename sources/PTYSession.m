@@ -199,7 +199,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #import <CoreFoundation/CoreFoundation.h>
-#import <FileProviderService/FileProviderService.h>
 
 static const NSInteger kMinimumUnicodeVersion = 8;
 static const NSInteger kMaximumUnicodeVersion = 9;
@@ -10281,11 +10280,13 @@ scrollToFirstResult:(BOOL)scrollToFirstResult
     [_delegate setActiveSession:self];
     [_view setNeedsDisplay:YES];
     [_view.findDriver owningViewDidBecomeFirstResponder];
-    [self makeComposerFirstResponderIfAllowed];
+    if (self.haveAutoComposer) {
+        [self makeComposerFirstResponderIfAllowed];
+    }
 }
 
 - (void)makeComposerFirstResponderIfAllowed {
-    if (!self.copyMode && self.haveAutoComposer) {
+    if (!self.copyMode) {
         [_composerManager makeDropDownComposerFirstResponder];
     }
 }
@@ -15589,6 +15590,9 @@ static const NSTimeInterval PTYSessionFocusReportBellSquelchTimeIntervalThreshol
 
     [alert setAccessoryView:scrollview];
     alert.window.initialFirstResponder = input;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [input.window makeFirstResponder:input];
+    });
     const NSInteger button = [alert runSheetModalForWindow:self.view.window];
 
     if (button == NSAlertFirstButtonReturn) {
@@ -15651,6 +15655,7 @@ static const NSTimeInterval PTYSessionFocusReportBellSquelchTimeIntervalThreshol
     }
     [self setComposerString:choices[0]];
     [self.composerManager toggle];
+    DLog(@"handleAIChoices -> makeComposerFirstResponder");
     [self makeComposerFirstResponderIfAllowed];
 }
 

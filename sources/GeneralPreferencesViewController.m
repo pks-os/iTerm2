@@ -210,6 +210,12 @@ enum {
         [_observer observeKey:@"NSQuitAlwaysKeepsWindows" block:^{
             [weakSelf updateEnabledState];
         }];
+
+        static iTermUserDefaultsObserver *gRemotePrefsObserver;
+        gRemotePrefsObserver = [[iTermUserDefaultsObserver alloc] init];
+        [gRemotePrefsObserver observeKey:kPreferenceKeyCustomFolder block:^{
+            DLog(@"Remote prefs changed from\n%@", [NSThread callStackSymbols]);
+        }];
     }
     return self;
 }
@@ -516,6 +522,7 @@ enum {
         return [iTermPreferences boolForKey:kPreferenceKeyLoadPrefsFromCustomFolder];
     };
     info.onChange = ^() {
+        DLog(@"prefsCustomFolder did change");
         [iTermRemotePreferences sharedInstance].customFolderChanged = YES;
         [self updateRemotePrefsViews];
     };
