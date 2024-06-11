@@ -442,7 +442,7 @@ static void iTermLineBlockFreeMetadata(LineBlockMetadata *metadata, int count) {
 
         // Preserve these so delta encoding will continue to work when you encode a copy.
         theCopy->_generation = _generation;
-        theCopy->_guid = [[NSUUID UUID] UUIDString];
+        theCopy->_guid = _guid;
         theCopy.hasBeenCopied = YES;
 
         return theCopy;
@@ -465,7 +465,7 @@ static void iTermLineBlockFreeMetadata(LineBlockMetadata *metadata, int count) {
     theCopy->cached_numlines = cached_numlines;
     theCopy->cached_numlines_width = cached_numlines_width;
     theCopy->_generation = _generation;
-    theCopy->_guid = [[NSUUID UUID] UUIDString];
+    theCopy->_guid = _guid;
     theCopy->_mayHaveDoubleWidthCharacter = _mayHaveDoubleWidthCharacter;
     theCopy.hasBeenCopied = YES;
     
@@ -2363,7 +2363,7 @@ includesPartialLastLine:(BOOL *)includesPartialLastLine {
                         DLog(@"Accept this result by initializing the range.");
                         multiLineRange = [range mutableCopy];
                     } else {
-                        DLog@("This is not the first line of the query");
+                        DLog(@"This is not the first line of the query");
                         const BOOL mustBeLast = (range.position + range.length) < lineLength;
                         if (mustBeLast && i + 1 < splitLines.count) {
                             DLog(@"The match does not extend to the end of the line and there is at least one more line after, so it doesn't match the newline.");
